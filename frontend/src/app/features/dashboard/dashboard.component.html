@@ -1,0 +1,98 @@
+<div class="flex flex-col gap-6">
+  <section class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-xs uppercase tracking-[0.2em] text-cyan-400/80">Mercado en tiempo real</p>
+      <h1 class="mt-1 text-2xl font-semibold text-slate-50">Panel de criptomonedas</h1>
+      @if (auth.user(); as user) {
+        <p class="mt-1 text-sm text-slate-400">
+          Sesión de <span class="text-slate-200">{{ user.displayName }}</span>
+          · {{ user.email }}
+          · rol
+          <span class="uppercase text-cyan-300">{{ user.role }}</span>
+        </p>
+      }
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      @if (snapshot(); as data) {
+        <span
+          class="rounded-full border px-3 py-1 text-xs font-medium"
+          [ngClass]="{
+            'border-emerald-700 text-emerald-300': data.source === 'live',
+            'border-cyan-700 text-cyan-300': data.source === 'cache',
+            'border-amber-700 text-amber-300': data.source === 'stale-cache',
+          }"
+        >
+          {{ sourceLabel(data.source) }} · TTL {{ data.cacheExpiresInSeconds }}s
+        </span>
+        <span class="text-xs text-slate-500">
+          Actualizado {{ data.fetchedAt | date: 'mediumTime' }}
+        </span>
+      }
+      <button mat-stroked-button type="button" (click)="loadMetrics()" [disabled]="loading()">
+        <mat-icon>sync</mat-icon>
+        Refrescar
+      </button>
+    </div>
+  </section>
+
+  @if (error()) {
+    <p class="rounded-xl border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-300">
+      {{ error() }}
+    </p>
+  }
+
+  @if (snapshot(); as data) {
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      @for (coin of data.metrics; track coin.id) {
+        <button
+          type="button"
+          class="rounded-2xl border p-4 text-left transition hover:border-cyan-500/60 hover:bg-slate-900"
+          [ngClass]="
+            selectedId() === coin.id
+              ? 'border-cyan-400/80 bg-slate-900 ring-1 ring-cyan-400/40'
+              : 'border-slate-800 bg-slate-900/50'
+          "
+          (click)="select(coin.id)"
+        >
+          <div class="mb-3 flex items-center gap-3">
+            <img [src]="coin.image" [alt]="coin.name" class="h-8 w-8 rounded-full" />
+            <div>
+              <p class="text-sm font-medium text-slate-100">{{ coin.name }}</p>
+              <p class="text-xs uppercase text-slate-500">{{ coin.symbol }}</p>
+            </div>
+          </div>
+          <p class="text-xl font-semibold text-slate-50">
+            {{ coin.price | currency: 'USD' : 'symbol' : '1.2-2' }}
+          </p>
+          <p
+            class="mt-1 text-sm font-medium"
+            [ngClass]="coin.changePercent24h >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+          >
+            {{ coin.changePercent24h >= 0 ? '+' : '' }}{{ coin.changePercent24h | number: '1.2-2' }}%
+          </p>
+          <p class="mt-2 text-xs text-slate-500">MCap {{ compactUsd(coin.marketCap) }}</p>
+        </button>
+      }
+    </div>
+
+    <app-metrics-chart [metric]="selectedMetric()" />
+  } @else if (loading()) {
+    <div class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/50"></div>
+  }
+
+  @if (auth.canMutateWatchlist()) {
+    <app-watchlist [knownCoins]="snapshot()?.metrics ?? []" />
+  } @else {
+    <section
+      class="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 px-5 py-6 text-sm text-slate-500"
+    >
+      La watchlist está restringida a los roles <span class="text-slate-300">trader</span> y
+      <span class="text-slate-300">admin</span>. Cambia la sesión en la cabecera para habilitarla.
+    </section>
+  }
+
+  @if (auth.isAdmin()) {
+    <app-audit-log />
+  }
+</div>
