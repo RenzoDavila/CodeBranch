@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: codebranch-backend
+    container_name: codebranch-backend
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      CORS_ORIGIN: http://localhost:4200
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: codebranch-frontend
+    container_name: codebranch-frontend
+    ports:
+      - "4200:4200"
+    environment:
+      NG_CLI_ANALYTICS: "false"
+    depends_on:
+      - backend
+    restart: unless-stopped

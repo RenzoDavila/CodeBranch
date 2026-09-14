@@ -28,7 +28,7 @@ async function bootstrap(): Promise<void> {
   );
 
   const port = Number(process.env.PORT ?? DEFAULT_PORT);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   new Logger('Bootstrap').log(`API escuchando en http://localhost:${port}`);
 }
