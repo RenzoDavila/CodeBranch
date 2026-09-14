@@ -1,114 +1,110 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Real-Time Financial Dashboard — API (NestJS)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST que expone métricas de mercado cripto (proxy cacheado sobre CoinGecko),
+un CRUD de watchlist y una bitácora de auditoría, todo bajo control de acceso
+basado en roles (RBAC).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Arranque
 
 ```bash
-$ npm install
+npm install
+npm run start:dev      # http://localhost:3000
 ```
 
-## Compile and run the project
+Variables de entorno opcionales:
+
+| Variable             | Por defecto                         | Uso                                                |
+| -------------------- | ----------------------------------- | -------------------------------------------------- |
+| `PORT`               | `3000`                              | Puerto de escucha.                                 |
+| `CORS_ORIGIN`        | `http://localhost:4200`             | Origen permitido para el frontend Angular.         |
+| `JWT_SECRET`         | secreto de desarrollo               | Clave HMAC de firma de tokens.                     |
+| `COINGECKO_API_KEY`  | —                                   | Demo API key de CoinGecko (amplía el rate-limit).  |
+
+## Arquitectura (Clean Architecture Lite)
+
+El flujo es siempre `Controller → Service → Repository`, y las dependencias
+apuntan hacia el dominio: los servicios solo conocen clases abstractas
+(`UserRepository`, `WatchlistRepository`, `AuditLogRepository`), que se usan
+como tokens de inyección y se enlazan a implementaciones en memoria dentro de
+cada módulo. Cambiar a una base de datos real significa escribir una nueva
+implementación y cambiar el `useClass`, sin tocar la capa de negocio.
+
+```
+src/
+├── auth/            AuthModule       → login simulado y emisión de JWT
+├── financial/       FinancialModule  → proxy CoinGecko + caché TTL
+├── watchlist/       WatchlistModule  → CRUD de activos seguidos
+├── audit/           AuditModule      → bitácora (global, consumida por el interceptor)
+└── common/          guards, decoradores e interceptor transversales
+```
+
+## Endpoints
+
+| Método   | Ruta                  | Roles autorizados         | Descripción                                  |
+| -------- | --------------------- | ------------------------- | -------------------------------------------- |
+| `GET`    | `/health`             | público                   | Chequeo de salud.                            |
+| `POST`   | `/auth/mock-login`    | público                   | Emite un JWT para el rol indicado.           |
+| `GET`    | `/auth/me`            | autenticado               | Perfil de la sesión activa.                  |
+| `GET`    | `/financial/metrics`  | `viewer`,`trader`,`admin` | Métricas de mercado (caché de 60 s).         |
+| `GET`    | `/watchlist`          | `trader`,`admin`          | Lista la watchlist.                          |
+| `GET`    | `/watchlist/:id`      | `trader`,`admin`          | Detalle de un elemento.                      |
+| `POST`   | `/watchlist`          | `trader`,`admin`          | Añade un activo.                             |
+| `PUT`    | `/watchlist/:id`      | `trader`,`admin`          | Actualiza símbolo, precio objetivo o notas.  |
+| `DELETE` | `/watchlist/:id`      | `trader`,`admin`          | Elimina un activo.                           |
+| `GET`    | `/audit/logs`         | `admin`                   | Bitácora de mutaciones.                      |
+
+### Login simulado
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+curl -X POST http://localhost:3000/auth/mock-login \
+  -H 'Content-Type: application/json' -d '{"role":"trader"}'
 ```
 
-## Run tests
+Devuelve `accessToken` (JWT HS256, 1 h) que debe enviarse como
+`Authorization: Bearer <token>`. Hay un usuario semilla por rol
+(`viewer@codebranch.dev`, `trader@codebranch.dev`, `admin@codebranch.dev`).
+
+## Decisiones de diseño
+
+**RBAC en dos guards encadenados.** `JwtAuthGuard` verifica el token y publica
+la sesión en `request.user`; `RolesGuard` compara el rol contra la metadata de
+`@Roles()`. Se declaran juntos (`@UseGuards(JwtAuthGuard, RolesGuard)`) a nivel
+de controlador, de modo que el orden queda explícito y una ruta sin `@Roles()`
+solo exige estar autenticado.
+
+**Caché de 60 s con degradación a dato obsoleto.** `FinancialService` envuelve
+al cliente de CoinGecko con un `TtlCache` (TTL 60 s), indexado por la
+combinación normalizada de activos y divisa: `?ids=btc,eth` y `?ids=eth,btc`
+comparten entrada. Si el proveedor falla o devuelve `429`, el servicio sirve la
+última respuesta conocida marcándola como `stale-cache` en lugar de romper el
+dashboard; solo lanza `503` si nunca llegó a cachear nada. La respuesta incluye
+`source` y `cacheExpiresInSeconds` para que el frontend muestre la frescura del
+dato y ajuste su intervalo de *polling*.
+
+**Auditoría desacoplada.** `AuditLogInterceptor` está registrado como
+`APP_INTERCEPTOR`, así que ningún módulo de negocio conoce la auditoría. Filtra
+por verbo (`POST`/`PUT`/`PATCH`/`DELETE`) y por rol (`trader`/`admin`), y
+registra tanto los éxitos como los fallos con su código HTTP, lo que deja
+rastro de los intentos rechazados. Los payloads se sanean de campos sensibles
+antes de persistirse y el almacén está acotado a 500 registros.
+
+**Propiedad del recurso.** Un `trader` solo opera sobre los elementos de su
+propia watchlist (`403` en caso contrario); un `admin` ve y modifica los de
+cualquier usuario.
+
+## Verificación
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run build     # compila
+npm run lint      # oxlint con reglas type-aware
 ```
 
-## Deployment
+El flujo completo (RBAC, caché y auditoría) se verificó contra la API real de
+CoinGecko con el servidor levantado.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+> **Nota sobre `npm run test:e2e`:** la suite en `test/app.e2e-spec.ts` documenta
+> el contrato RBAC, pero no se puede ejecutar en este entorno: NestJS 12
+> distribuye sus paquetes como ESM puro (`"type": "module"`) y el runtime de
+> Jest solo soporta `require(esm)` a partir de Node 24.9 (aquí hay Node 22).
+> Con Node ≥ 24.9 la suite corre sin cambios; migrar Jest a ESM en Node 22
+> obligaría a reescribir todos los imports relativos con extensión `.js`.
