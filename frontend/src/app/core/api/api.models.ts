@@ -48,6 +48,18 @@ export interface MarketMetricsSnapshot {
 }
 
 /**
+ * Resultado de `GET /financial/search` para el autocomplete de la watchlist.
+ */
+export interface CoinSearchHit {
+  /** Identificador CoinGecko. */
+  readonly id: string;
+  /** Símbolo en mayúsculas. */
+  readonly symbol: string;
+  /** Nombre legible. */
+  readonly name: string;
+}
+
+/**
  * Elemento de la watchlist persistido en memoria en el backend.
  */
 export interface WatchlistItem {

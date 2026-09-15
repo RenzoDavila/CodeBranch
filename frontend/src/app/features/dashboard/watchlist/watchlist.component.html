@@ -2,7 +2,9 @@
   <header class="mb-4 flex items-center justify-between gap-3">
     <div>
       <h2 class="text-lg font-semibold text-slate-50">Watchlist</h2>
-      <p class="text-xs text-slate-500">Busca un ID de CoinGecko y añádelo. Visible para trader y admin.</p>
+      <p class="text-xs text-slate-500">
+        Busca un activo, define un precio objetivo y añádelo. Visible para trader y admin.
+      </p>
     </div>
     <button mat-stroked-button type="button" (click)="reload()" [disabled]="loading()">
       <mat-icon>refresh</mat-icon>
@@ -12,45 +14,39 @@
 
   <form class="mb-5 grid gap-3 md:grid-cols-5" (submit)="$event.preventDefault(); add()">
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="md:col-span-2">
-      <mat-label>ID CoinGecko</mat-label>
+      <mat-label>Buscar criptomoneda</mat-label>
       <input
         matInput
-        [value]="draftId()"
-        (input)="onIdInput($event)"
-        list="known-coins"
-        placeholder="bitcoin"
+        [formControl]="searchControl"
+        [matAutocomplete]="coinAuto"
+        placeholder="bitcoin, eth, sol..."
         autocomplete="off"
       />
-      <datalist id="known-coins">
-        @for (coin of knownCoins(); track coin.id) {
-          <option [value]="coin.id">{{ coin.symbol }} · {{ coin.name }}</option>
+      @if (searching()) {
+        <mat-spinner matSuffix diameter="18"></mat-spinner>
+      }
+      <mat-autocomplete
+        #coinAuto="matAutocomplete"
+        [displayWith]="displayCoin"
+        (optionSelected)="onCoinSelected($event)"
+      >
+        @for (coin of suggestions(); track coin.id) {
+          <mat-option [value]="coin">
+            <span class="font-medium">{{ coin.symbol }}</span>
+            <span class="ml-2 text-xs text-slate-400">{{ coin.name }} · {{ coin.id }}</span>
+          </mat-option>
         }
-      </datalist>
+      </mat-autocomplete>
     </mat-form-field>
 
     <mat-form-field appearance="outline" subscriptSizing="dynamic">
       <mat-label>Símbolo</mat-label>
-      <input
-        matInput
-        [ngModel]="draftSymbol()"
-        (ngModelChange)="draftSymbol.set($event)"
-        name="symbol"
-        placeholder="BTC"
-      />
+      <input matInput [formControl]="symbolControl" placeholder="BTC" />
     </mat-form-field>
 
     <mat-form-field appearance="outline" subscriptSizing="dynamic">
       <mat-label>Precio objetivo</mat-label>
-      <input
-        matInput
-        type="number"
-        min="0"
-        step="0.01"
-        [ngModel]="draftTarget()"
-        (ngModelChange)="draftTarget.set($event)"
-        name="target"
-        placeholder="150000"
-      />
+      <input matInput type="number" min="0" step="0.01" [formControl]="targetControl" placeholder="150000" />
     </mat-form-field>
 
     <button mat-flat-button color="primary" type="submit" class="h-14">
@@ -61,16 +57,14 @@
 
   <mat-form-field appearance="outline" subscriptSizing="dynamic" class="mb-4 w-full">
     <mat-label>Notas (opcional)</mat-label>
-    <input
-      matInput
-      [ngModel]="draftNotes()"
-      (ngModelChange)="draftNotes.set($event)"
-      name="notes"
-      maxlength="280"
-    />
+    <input matInput [formControl]="notesControl" maxlength="280" />
   </mat-form-field>
 
-  @if (items().length === 0) {
+  @if (loading()) {
+    <div class="flex justify-center py-12">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (items().length === 0) {
     <p class="rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-500">
       Todavía no hay activos en la watchlist.
     </p>
@@ -87,10 +81,19 @@
           </td>
         </ng-container>
 
+        <ng-container matColumnDef="currentPrice">
+          <th mat-header-cell *matHeaderCellDef>Precio actual</th>
+          <td mat-cell *matCellDef="let row">
+            <span [ngClass]="priceClass(row)">
+              {{ currentPrice(row) !== null ? (currentPrice(row)! | currency: 'USD' : 'symbol' : '1.2-2') : '—' }}
+            </span>
+          </td>
+        </ng-container>
+
         <ng-container matColumnDef="targetPrice">
           <th mat-header-cell *matHeaderCellDef>Objetivo</th>
           <td mat-cell *matCellDef="let row">
-            {{ row.targetPrice ? (row.targetPrice | currency: 'USD' : 'symbol' : '1.0-0') : '—' }}
+            {{ row.targetPrice ? (row.targetPrice | currency: 'USD' : 'symbol' : '1.0-2') : '—' }}
           </td>
         </ng-container>
 

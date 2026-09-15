@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import {
+  CoinSearchHit,
   MarketMetric,
   MarketMetricsSnapshot,
 } from './domain/market-metric.model';
@@ -8,6 +9,9 @@ import { TtlCache } from './infrastructure/ttl-cache';
 
 /** TTL de la caché de métricas: 60 segundos, según requisito. */
 export const METRICS_CACHE_TTL_MS = 60_000;
+
+/** TTL de la caché de búsqueda: 30 s, para no martillar CoinGecko desde el autocomplete. */
+export const SEARCH_CACHE_TTL_MS = 30_000;
 
 /** Activos mostrados por defecto en el dashboard. */
 export const DEFAULT_COIN_IDS: readonly string[] = Object.freeze([
@@ -38,6 +42,9 @@ export class FinancialService {
 
   /** Caché de snapshots indexada por combinación de activos + divisa. */
   private readonly cache = new TtlCache<MarketMetric[]>(METRICS_CACHE_TTL_MS);
+
+  /** Caché de resultados de búsqueda indexada por query normalizada. */
+  private readonly searchCache = new TtlCache<CoinSearchHit[]>(SEARCH_CACHE_TTL_MS);
 
   /**
    * @param coinGeckoClient Cliente del proveedor de datos de mercado.
@@ -77,11 +84,50 @@ export class FinancialService {
   }
 
   /**
+   * Busca activos en CoinGecko por texto libre.
+   * Cachea 30 s por query para que el debounce del autocomplete no dispare
+   * una petición HTTP por cada tecla repetida.
+   *
+   * @param query Texto de búsqueda.
+   * @throws {ServiceUnavailableException} Si el proveedor falla y no hay caché previa.
+   * @returns Coincidencias `{ id, symbol, name }`.
+   */
+  async search(query: string): Promise<CoinSearchHit[]> {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) {
+      return [];
+    }
+
+    const cached = this.searchCache.get(normalized);
+    if (cached) {
+      this.logger.debug(`Search cache HIT para "${normalized}"`);
+      return cached;
+    }
+
+    try {
+      const hits = await this.coinGeckoClient.searchCoins(normalized);
+      return this.searchCache.set(normalized, hits);
+    } catch (error) {
+      const stale = this.searchCache.getStale(normalized);
+      if (stale) {
+        return stale.value;
+      }
+
+      const reason = error instanceof Error ? error.message : 'error desconocido';
+      throw new ServiceUnavailableException(
+        `No se pudo buscar en CoinGecko: ${reason}`,
+      );
+    }
+  }
+
+  /**
    * Invalida la caché de métricas. Expuesto para forzar un refresco manual
    * desde la UI y para escenarios de test.
    */
   invalidateCache(): void {
     this.cache.clear();
+    this.searchCache.clear();
     this.logger.log('Caché de métricas invalidada');
   }
 

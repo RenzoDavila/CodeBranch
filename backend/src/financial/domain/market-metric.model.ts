@@ -56,3 +56,16 @@ export interface MarketMetricsSnapshot {
   /** Segundos que restan antes de que la caché expire. */
   readonly cacheExpiresInSeconds: number;
 }
+
+/**
+ * Resultado reducido de `GET /financial/search`.
+ * Es el contrato que consume el autocomplete de la watchlist.
+ */
+export interface CoinSearchHit {
+  /** Identificador CoinGecko (ej. `bitcoin`). */
+  readonly id: string;
+  /** Símbolo en mayúsculas (ej. `BTC`). */
+  readonly symbol: string;
+  /** Nombre legible. */
+  readonly name: string;
+}

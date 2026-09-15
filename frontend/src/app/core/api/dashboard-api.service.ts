@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { API_URL } from './api.config';
 import {
   AuditLog,
+  CoinSearchHit,
   CreateWatchlistItemPayload,
   MarketMetricsSnapshot,
   WatchlistItem,
@@ -35,6 +36,18 @@ export class DashboardApiService {
 
     return this.http.get<MarketMetricsSnapshot>(`${API_URL}/financial/metrics`, {
       params,
+    });
+  }
+
+  /**
+   * Busca activos en CoinGecko a través del proxy del backend.
+   *
+   * @param query Texto libre (nombre, símbolo o id).
+   * @returns Coincidencias `{ id, symbol, name }`.
+   */
+  searchCoins(query: string): Observable<CoinSearchHit[]> {
+    return this.http.get<CoinSearchHit[]>(`${API_URL}/financial/search`, {
+      params: { query },
     });
   }
 

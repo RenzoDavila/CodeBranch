@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MarketMetric } from '../domain/market-metric.model';
+import { CoinSearchHit, MarketMetric } from '../domain/market-metric.model';
 
 /**
  * Forma parcial del payload de `/api/v3/coins/markets`.
@@ -25,6 +25,20 @@ const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 
 /** Tiempo máximo de espera por respuesta del proveedor (ms). */
 const REQUEST_TIMEOUT_MS = 8000;
+
+/** Máximo de coincidencias que se devuelven al autocomplete. */
+const SEARCH_RESULT_LIMIT = 10;
+
+/**
+ * Forma parcial de `/api/v3/search`.
+ */
+interface CoinGeckoSearchDto {
+  coins?: Array<{
+    id: string;
+    symbol: string;
+    name: string;
+  }>;
+}
 
 /**
  * Cliente HTTP del proveedor de datos de mercado (CoinGecko).
@@ -75,6 +89,36 @@ export class CoinGeckoClient {
 
     const payload = (await response.json()) as CoinGeckoMarketDto[];
     return payload.map((dto) => this.toMarketMetric(dto));
+  }
+
+  /**
+   * Busca activos por texto libre en CoinGecko (`/search`).
+   *
+   * @param query Texto de búsqueda (nombre, símbolo o id).
+   * @throws {Error} Si la petición falla, expira o responde con estado != 2xx.
+   * @returns Lista reducida `{ id, symbol, name }` lista para el autocomplete.
+   */
+  async searchCoins(query: string): Promise<CoinSearchHit[]> {
+    const url = `${COINGECKO_BASE_URL}/search?${new URLSearchParams({ query }).toString()}`;
+    this.logger.log(`GET ${url}`);
+
+    const response = await fetch(url, {
+      headers: this.buildHeaders(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `CoinGecko search respondió ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const payload = (await response.json()) as CoinGeckoSearchDto;
+    return (payload.coins ?? []).slice(0, SEARCH_RESULT_LIMIT).map((coin) => ({
+      id: coin.id,
+      symbol: coin.symbol.toUpperCase(),
+      name: coin.name,
+    }));
   }
 
   /**

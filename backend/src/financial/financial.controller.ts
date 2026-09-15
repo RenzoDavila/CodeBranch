@@ -3,8 +3,9 @@ import { ALL_ROLES } from '../auth/domain/user-role.enum';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { MarketMetricsSnapshot } from './domain/market-metric.model';
+import type { CoinSearchHit, MarketMetricsSnapshot } from './domain/market-metric.model';
 import { MetricsQueryDto } from './dto/metrics-query.dto';
+import { SearchQueryDto } from './dto/search-query.dto';
 import { DEFAULT_COIN_IDS, DEFAULT_CURRENCY, FinancialService } from './financial.service';
 
 /**
@@ -37,5 +38,17 @@ export class FinancialController {
       coinIds,
       query.currency ?? DEFAULT_CURRENCY,
     );
+  }
+
+  /**
+   * `GET /financial/search?query=bit`
+   * Proxy de la búsqueda pública de CoinGecko, reducido a `id`, `symbol` y `name`.
+   *
+   * @param query Texto libre a buscar.
+   * @returns Coincidencias para el autocomplete de la watchlist.
+   */
+  @Get('search')
+  search(@Query() query: SearchQueryDto): Promise<CoinSearchHit[]> {
+    return this.financialService.search(query.query);
   }
 }
